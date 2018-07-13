@@ -1,0 +1,75 @@
+import "lib/_Datatypes.thingml"
+import "lib/_Timer_C.thingml"
+
+/*
+ * This example shows how to blink an LED on GPIO 17 of the RPI using the Posix C compiler
+ * and the wiringpi C library (installs with "sudo apt-get install wiringpi")
+ * 
+ * Documentation on the hardware and how wiringpi is used:
+ * https://www.admfactory.com/blinking-led-on-raspberry-pi-using-c/
+ * 
+ * The ThingML implementation is not as simple as it could be in order to
+ * show more of the ThingML constructs (properties, composite states, etc...)
+ * 
+ * This program should be compiled with the ThingML "posix" code generator
+ * 
+ */
+
+thing BlinkC includes TimerMsgs
+@c_header `
+#include <wiringPi.h>
+#include <stdio.h>
+`
+{
+	readonly property LED_PIN : UInt8 = 0	// corresponds to GPIO 17
+	
+	required port clock { 
+		sends timer_start
+		receives timer_timeout
+	}	
+	
+	statechart PiBlinkC init Init {
+		
+		state Init {
+			property initResult : Int8
+			
+			on entry initResult = `wiringPiSetup()` as Int8
+			
+			transition -> Blinking guard initResult != -1
+			transition -> Error guard initResult == -1
+		}
+		
+		composite state Blinking init OFF @ignore "sink" {
+			
+			on entry `pinMode(`&LED_PIN&`, OUTPUT);`
+			
+			state OFF {
+				on entry do
+					print "OFF\n"
+					`digitalWrite(`&LED_PIN&`, LOW);`
+					clock!timer_start(0, 1000)
+				end
+				transition -> ON event clock?timer_timeout
+			}
+			state ON {
+				on entry do
+					print "ON\n"
+					`digitalWrite(`&LED_PIN&`, HIGH);`
+					clock!timer_start(0, 1000)
+				end
+				transition -> OFF event clock?timer_timeout
+			}
+		}
+		
+		final state Error {
+			on entry error "Setup wiringPi failed !\n"
+		} 
+	}
+}
+
+configuration BlinkC 
+	@add_c_libraries "wiringPi"
+{
+	instance blink : BlinkC
+	connector blink.clock over Timer
+}

@@ -1,0 +1,76 @@
+import "lib/_Datatypes.thingml"
+import "lib/_Timer_JS.thingml"
+
+/*
+ * This example shows how to blink an LED on GPIO 17 of the RPI using the NodeJS compiler
+ * and the onoff module.
+ * 
+ * Documentation on the hardware and NodeJS setup is here:
+ * https://www.w3schools.com/nodejs/nodejs_raspberrypi_blinking_led.asp
+ * 
+ * To install a recent version of nodejs on the rpi:
+ * 'curl -sL https://deb.nodesource.com/setup_8.x | sudo -E bash -'
+ * 
+ * Generate the code with the ThingML nodejs compiler.
+ * 
+ * Copy the code to the Raspberry Pi
+ * 
+ * Install by running "npm install" (in the generated code folder which contains the package.json)
+ * 
+ * Run with "node main.js"
+ * 
+ */
+
+object JSObject;
+
+thing BlinkNodeJS includes TimerMsgs
+@js_dep `onoff:^3.1.0`
+{
+	
+	readonly property LED_PIN : UInt8 = 17	// GPIO 17
+	
+	property led : JSObject
+	
+	required port clock { 
+		sends timer_start
+		receives timer_timeout
+	}	
+	
+	function initialize() do
+		`var Gpio = require('onoff').Gpio;
+		`&led&` = new Gpio(`&LED_PIN&`, 'out');`
+	end
+	
+	function ledON() ``&led&`.writeSync(1);`
+	function ledOFF() ``&led&`.writeSync(0);`
+	
+	statechart PiBlinkC init OFF {
+		
+		on entry initialize()
+		
+		state OFF {
+			on entry do
+				print "OFF\n"
+				clock!timer_start(0, 1000)
+				ledOFF()
+			end
+			transition -> ON event clock?timer_timeout
+		}
+		state ON {
+			on entry do
+				print "ON\n"
+				clock!timer_start(0, 1000)
+				ledON()
+			end
+			transition -> OFF event clock?timer_timeout
+
+		}
+	}
+}
+
+configuration BlinkNodeJS 
+{
+	instance blink : BlinkNodeJS
+	instance timer : TimerBrowser 
+	connector blink.clock => timer.timer
+}
