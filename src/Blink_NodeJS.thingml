@@ -1,5 +1,5 @@
-import "lib/_Datatypes.thingml"
-import "lib/_Timer_JS.thingml"
+import "./lib/_Datatypes.thingml"
+import "./lib/_Timer_JS.thingml"
 
 /*
  * This example shows how to blink an LED on GPIO 17 of the RPI using the NodeJS compiler
@@ -22,39 +22,52 @@ import "lib/_Timer_JS.thingml"
  */
 
 object JSObject;
-
 thing BlinkNodeJS includes TimerMsgs
 @js_dep `onoff:^3.1.0`
+@js_dep `mqtt:4.2.8`
 {
-	
-	readonly property LED_PIN : UInt8 = 17	// GPIO 17
-	
+	readonly property LED_PIN : UInt8 = 17 // GPIO 17
 	property led : JSObject
-	
-	required port clock { 
+	property mqttClient: JSObject
+	required port clock {
 		sends timer_start
 		receives timer_timeout
-	}	
-	
+	}
 	function initialize() do
-		`var Gpio = require('onoff').Gpio;
-		`&led&` = new Gpio(`&LED_PIN&`, 'out');`
+		`const Gpio = require('onoff').Gpio;
+		const mqtt = require('mqtt');
+		`&mqttClient&` = mqtt.connect('mqtt://test.mosquitto.org');
+		`&mqttClient&`.on('connect', function () {
+  			`&mqttClient&`.subscribe('topic-1', function (err) {
+    			if (!err) {
+      				`&mqttClient&`.publish('topic1', 'Hello mqtt')
+    			}
+  			})
+		})
+
+		`&mqttClient&`.on('message', function (topic, message) {
+  			// message is Buffer
+  			console.log(message.toString())
+  			`&mqttClient&`.end()
+		})
+		`&led&` = new Gpio('`&LED_PIN&`', 'out');`
 	end
-	
-	function ledON() ``&led&`.writeSync(1);`
-	function ledOFF() ``&led&`.writeSync(0);`
-	
+	function ledON() ``&led&`.writeSync("1");
+		`&mqttClient&`.publish("topic-1", "1");
+	`
+	function ledOFF() ``&led&`.writeSync("0");
+		`&mqttClient&`.publish("topic-1", "0");	
+	`
 	statechart PiBlinkC init OFF {
-		
 		on entry initialize()
-		
 		state OFF {
 			on entry do
 				print "OFF\n"
 				clock!timer_start(0, 1000)
 				ledOFF()
 			end
-			transition -> ON event clock?timer_timeout
+			transition -> ON
+			event clock?timer_timeout
 		}
 		state ON {
 			on entry do
@@ -62,15 +75,14 @@ thing BlinkNodeJS includes TimerMsgs
 				clock!timer_start(0, 1000)
 				ledON()
 			end
-			transition -> OFF event clock?timer_timeout
-
+			transition -> OFF
+			event clock?timer_timeout
 		}
 	}
 }
-
 configuration BlinkNodeJS 
 {
 	instance blink : BlinkNodeJS
-	instance timer : TimerBrowser 
+	instance timer : TimerBrowser
 	connector blink.clock => timer.timer
 }
